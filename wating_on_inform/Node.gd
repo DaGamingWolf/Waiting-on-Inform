@@ -22,19 +22,26 @@
 
 extends Node
 
+
+#test functions
 func testing():
 	print("tested")
 
+
 func boolean_true()->bool:
 	return true
-	
+
+
 func boolean_false()->bool:
 	return false
-# Called when the node enters the scene tree for the first time.
+
+
 func _ready() -> void:
 	var text = "This is text testing [testing]and then there is [if boolean]one[if boolean true] and two[end if][else]three[end if]. Also, there is [if boolean false]one[else if boolean false]two[else]three[end if]."
 	
 	print(reconstruct_from_embedded_code(text, self))
+
+
 
 func is_valid_function_name(text: String) -> bool:
 	if text.is_empty():
@@ -45,13 +52,13 @@ func is_valid_function_name(text: String) -> bool:
 		if !(text[i] == "_" or (text[i] >= "0" and text[i] <= "9") or (text[i] >= "a" and text[i] <= "z") or (text[i] >= "A" and text[i] <= "Z")):
 			return false
 	return true
-#the idea is to use recursion to gradually chop the left hand side of the paragraph off, move it to text_reconstruction, and introduce logic in between the process based on embedded code. 
+
+
+#the idea is to use recursion to gradually chop the left hand side of the paragraph off, move it to text_reconstruction, and introduce logic inbetween the process based on embedded code. 
 ##This recieves a text paragraph from a say command, and searches it for embedded code, runs it, then reconstructs the text paragraph and returns it so it can be properly displayed to the player. 
 func reconstruct_from_embedded_code(text: String, caller: Object, text_reconstruction: String = ""):
 	var text_not_constructed: bool = true
 	var text_0_reconstruction_1: Array = [text, text_reconstruction]
-	#these are the results of the if statements resolved since the last 'if' statement
-	#var if_results: Array = []
 	
 	while text_not_constructed:
 		if text_0_reconstruction_1[0].is_empty():
@@ -62,8 +69,6 @@ func reconstruct_from_embedded_code(text: String, caller: Object, text_reconstru
 			text_0_reconstruction_1[1] += text_0_reconstruction_1[0]
 			break
 		
-		
-	
 		var embedded_code_end = text_0_reconstruction_1[0].find("]") 
 		if embedded_code_begin > embedded_code_end:
 			if embedded_code_end >0:	
@@ -72,7 +77,6 @@ func reconstruct_from_embedded_code(text: String, caller: Object, text_reconstru
 			break
 			
 		var next_left_bracket = text_0_reconstruction_1[0].find("[", embedded_code_begin+1)
-		
 		if next_left_bracket < embedded_code_end and next_left_bracket != -1: #needs work for nested code
 			text_0_reconstruction_1[1] += " Error: forgotten right bracket "
 			break
@@ -113,7 +117,6 @@ func reconstruct_from_embedded_code(text: String, caller: Object, text_reconstru
 				break
 			"end if":
 				#probably a nested if. check that if_results has a value, and that it is 
-				#removal and return
 				construct_text_segment(text_0_reconstruction_1, embedded_code_end, chop_methods.CHOP_RIGHT)
 				break
 			"one of":
@@ -146,16 +149,12 @@ func _process_if_statement(text_0_reconstruction_1: Array, embedded_code: String
 		var _return_value = caller.call(embedded_function)
 		if _return_value != null && typeof(_return_value) == TYPE_BOOL:
 			if _return_value:
-				#===========move into function====================
 				_process_if_success(text_0_reconstruction_1, embedded_code, embedded_code_end, caller)
-				#===========move into function====================
 				return
-					
+				
 			else:#return value of function is false
-				#skip embedded code
-				#===========move into function====================
 				_process_if_failure(text_0_reconstruction_1, embedded_code, embedded_code_end, caller)
-				#===========move into function====================
+				
 		else: #function call contained no bool value, throw error
 			return
 	else: #embedded code is not a function contained in the caller and is likely a composition of variables and/or comparisons.
@@ -164,10 +163,6 @@ func _process_if_statement(text_0_reconstruction_1: Array, embedded_code: String
 #		var double_comparison_pattern	= "(^[\\s\\w><=!.]*)(?: or |\\|\\|| and | && )([\\s\\w><=!.]*)$"
 		var comparison_pattern			= " or | and | && | \\|\\| "
 		
-#		var triple_comparison: RegEx= RegEx.new()
-#		triple_comparison.compile(triple_comparison_pattern)
-#		var double_comparison: RegEx= RegEx.new()
-#		double_comparison.compile(double_comparison_pattern)
 		var comparison_reg: RegEx		= RegEx.new()
 		comparison_reg.compile(comparison_pattern)
 		
@@ -183,7 +178,6 @@ func _process_if_statement(text_0_reconstruction_1: Array, embedded_code: String
 				_process_if_success(text_0_reconstruction_1, embedded_code, embedded_code_end, caller)
 				
 			else:#return value of function is false
-				#skip embedded code
 				_process_if_failure(text_0_reconstruction_1, embedded_code, embedded_code_end, caller)
 			return
 				
@@ -192,6 +186,7 @@ func _process_if_statement(text_0_reconstruction_1: Array, embedded_code: String
 			construct_text_segment(embedded_code_0_comparisons_1, comparison_operator.get_start() - comparisons[0], chop_methods.CHOP_LEFT)
 			#remove and append the oporator
 			construct_text_segment(embedded_code_0_comparisons_1, comparison_operator.get_end() - comparisons[0], chop_methods.CHOP_RIGHT, "")
+		
 		embedded_code_0_comparisons_1[1].append(embedded_code_0_comparisons_1[0])
 		#comparisons should now look like [<total elements minus the last comparison>, <comparison string>, <operator>, comparison string]
 		
@@ -216,8 +211,8 @@ func _process_if_statement(text_0_reconstruction_1: Array, embedded_code: String
 				or_comparisons.append(comparisons[index-1])
 				if index == operator_array[-1]: #last operator, so th next comparison must also be appended
 					or_comparisons.append(comparisons[index+1])
-				
 				continue
+				
 			else:
 				last_operator_was_and = true
 				
@@ -284,11 +279,13 @@ func _process_if_success(text_0_reconstruction_1: Array, embedded_code: String, 
 			embedded_code = text_0_reconstruction_1[0].substr(embedded_code_begin+1, embedded_code_end-1) #since embedded code was discovered as function, it is no longer needed and can be overwritten
 			embedded_code = embedded_code.substr(3)
 			_process_if_statement(text_0_reconstruction_1, embedded_code, embedded_code_end, caller)
+			continue
 		elif text_0_reconstruction_1[0].begins_with("[end if]"):
 			#find end if, construct and replace with empty string
 			embedded_code_end = text_0_reconstruction_1[0].find("[end if]") + 7
 			construct_text_segment(text_0_reconstruction_1, embedded_code_end, chop_methods.CHOP_RIGHT, "")
-			processing_if = false
+			break
+			
 		elif text_0_reconstruction_1[0].begins_with("[else"):
 			#skip to the proper end if
 			var first_if	= text_0_reconstruction_1[0].find("[if ")
@@ -307,10 +304,12 @@ func _process_if_success(text_0_reconstruction_1: Array, embedded_code: String, 
 						end_if_not_found = false
 						
 			construct_text_segment(text_0_reconstruction_1, first_end_if+7, chop_methods.CHOP_RIGHT, "")
-			processing_if = false
+			break 
+			
 		else:
 			text_0_reconstruction_1[1]+= "Error: unhandled exception in_process_if_statement()."
 			break
+		processing_if = false # A failsafe. used break and continue to specify flow. 
 
 
 func _process_if_failure(text_0_reconstruction_1: Array, embedded_code: String, embedded_code_end: int, caller):

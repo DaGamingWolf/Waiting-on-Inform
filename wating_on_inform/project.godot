@@ -17,4 +17,4 @@ config/icon="res://icon.svg"
 
 [global]
 
-Version="0.0.2.0"
+Version="0.0.3.0"

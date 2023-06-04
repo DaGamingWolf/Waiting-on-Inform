@@ -22,6 +22,15 @@
 
 extends Node
 
+##Authors Notes:
+##This code is intended to process one or two paragraphs of text at a time. It
+##should not be expected to perform quickly when given pages of text with embedded code
+## at a time, and will likely produce a noticable delay. That does not mean I won't 
+##be improving on it's performance, since there are always other things a program 
+##needs to do than simply parsing text, but I don't recommend planning on using 
+##it for that purpose. Benchmark first. 
+
+
 
 #=========test functions===========
 func testing():
@@ -35,18 +44,39 @@ func boolean_true()->bool:
 func boolean_false()->bool:
 	return false
 
+var boolean: bool = true
+
 #=========test functions===========
 
 ## this is a cache of objects in format <object name> : <object>. The parser will look in this cache for any objects referenced in embedded code, so make sure it is populated with the relevant objects you expect to be referenced before embedded code is parsed. 
-var registered_objects: Dictionary
+var registered_objects: Dictionary = {
+	"Player" : self,
+	"player" : self,
+	"Player in lower case": self
+	}
+
 
 func _ready() -> void:
+	compile_regex()
 	var text = "This is text testing [testing]and then there is [if boolean]one[if boolean true] and two[end if][else]three[end if]. Also, there is [if boolean false]one[else if boolean false]two[else]three[end if]."
-	var test_text = " test text "
-	print(test_text.to_snake_case())
-	
-	#print(reconstruct_from_embedded_code(text, self))
+	#var test_text = " test text "
+	measure_time_for(self.trigger, [text])
 
+func compile_regex():
+	#regex_spaces.compile(space_pattern)
+	pass
+
+##measures the time a function call takes in ms and prints it to the console.
+func measure_time_for(callable: Callable, parameters: Array = []):
+	var time_before:float = Time.get_unix_time_from_system()
+	callable.callv(parameters)
+	var time_after:float	= Time.get_unix_time_from_system()
+	var total_time:float	= (time_after - time_before)*1000
+	print("Time taken: " + str(total_time).substr(0, 6) + " ms")
+
+
+func trigger(text):
+	printerr(reconstruct_from_embedded_code(text, self))
 
 
 func is_valid_function_name(text: String) -> bool:
@@ -70,8 +100,6 @@ func reconstruct_from_embedded_code(text: String, caller: Object, text_reconstru
 		if text_0_reconstruction_1[0].is_empty():
 			break
 		
-			
-		
 		var embedded_code_begin: int = text_0_reconstruction_1[0].find("[") #consider a specialized find that checks a specified range or emits an error when detecting embedded brackets. 
 		if embedded_code_begin <= -1:							#no embedded code, so break
 			text_0_reconstruction_1[1] += text_0_reconstruction_1[0]
@@ -94,7 +122,6 @@ func reconstruct_from_embedded_code(text: String, caller: Object, text_reconstru
 			embedded_code_end-= embedded_code_begin
 			embedded_code_begin = 0 #i'm using a variable for code clarity, but it should always be 0
 		
-		
 		if embedded_code_end == -1:
 			#throw error, the writer forgot a bracket
 			text_0_reconstruction_1[1] += text
@@ -109,15 +136,15 @@ func reconstruct_from_embedded_code(text: String, caller: Object, text_reconstru
 		
 		#if the embedded code is a function name, call it regardless of contents of the text
 		var embedded_function: String = to_function(embedded_code)
-		var variable = caller.get(embedded_code)
-		if is_valid_function_name(embedded_function):
-			if caller.has_method(embedded_function):
-				var _return_value = caller.call(embedded_function)
-				if _return_value != null && typeof(_return_value) == TYPE_STRING:
-					construct_text_segment(text_0_reconstruction_1, embedded_code_end, chop_methods.CHOP_RIGHT, _return_value)
-				else:
-					construct_text_segment(text_0_reconstruction_1, embedded_code_end, chop_methods.CHOP_RIGHT, "")
-				continue
+		var variable = caller.get(snake_case(embedded_code))
+		if is_valid_function_name(embedded_function) and caller.has_method(embedded_function):
+		
+			var _return_value = caller.call(embedded_function)
+			if _return_value != null && typeof(_return_value) == TYPE_STRING:
+				construct_text_segment(text_0_reconstruction_1, embedded_code_end, chop_methods.CHOP_RIGHT, _return_value)
+			else:
+				construct_text_segment(text_0_reconstruction_1, embedded_code_end, chop_methods.CHOP_RIGHT, "")
+			continue
 		elif variable != null:
 			construct_text_segment(text_0_reconstruction_1, embedded_code_end, chop_methods.CHOP_RIGHT, variable as String)
 			continue
@@ -148,13 +175,17 @@ func reconstruct_from_embedded_code(text: String, caller: Object, text_reconstru
 					embedded_code = embedded_code.substr(3)
 					_process_if_statement(text_0_reconstruction_1, embedded_code, embedded_code_end, caller)
 				else:
-					construct_text_segment(text_0_reconstruction_1, embedded_code_end, chop_methods.CHOP_RIGHT)
+					variable = variable_check(caller, embedded_code)
+					if variable == null:
+						construct_text_segment(text_0_reconstruction_1, embedded_code_end, chop_methods.CHOP_RIGHT)
+					else:
+						construct_text_segment(text_0_reconstruction_1, embedded_code_end, chop_methods.CHOP_RIGHT, str(variable))
 					#[testin]and then there is [if boolean true]one[if boolean true] and two[end if][else]three[end if]. Also, there is [if boolean false]one[else if boolean false]two[else]three[end if].
 	
 	if waiting_on_error_insertion:
+		var insertion_adjustment: int = 0
 		for insertion_point in error_strings.keys():
-			var insertion_adjustment: int = 0
-			text_0_reconstruction_1[1].insert(insertion_point + insertion_adjustment, " " + error_strings[insertion_point])
+			text_0_reconstruction_1[1] = text_0_reconstruction_1[1].insert(insertion_point + insertion_adjustment, " (:" + error_strings[insertion_point]+ ":) ")
 			insertion_adjustment += error_strings[insertion_point].length() + 1
 		
 		waiting_on_error_insertion = false
@@ -179,7 +210,7 @@ func _process_if_statement(text_0_reconstruction_1: Array, embedded_code: String
 				
 		else: #function call contained no bool value, throw error
 			return
-	else: #embedded code is not a function contained in the caller and is likely a composition of variables and/or comparisons.
+	else: #embedded code is not a function contained in the caller and is likely a composition of variables and/or comparisons
 #		var quadruple_comparison_pattern= "(^[\\s\\w><=!.]*)(?: or |\\|\\|| and | && )([\\s\\w><=!.]*)(?: or |\\|\\|| and | && )([\\s\\w><=!.]*)(?: or |\\|\\|| and | && )([\\s\\w><=!.]*)$"
 #		var triple_comparison_pattern	= "(^[\\s\\w><=!.]*)(?: or |\\|\\|| and | && )([\\s\\w><=!.]*)(?: or |\\|\\|| and | && )([\\s\\w><=!.]*)$"
 #		var double_comparison_pattern	= "(^[\\s\\w><=!.]*)(?: or |\\|\\|| and | && )([\\s\\w><=!.]*)$"
@@ -195,7 +226,7 @@ func _process_if_statement(text_0_reconstruction_1: Array, embedded_code: String
 		var comparisons: Array = [0] # The first element represents the sum of characters in all comparisons
 		var embedded_code_0_comparisons_1	= [embedded_code, comparisons]
 		if comparisons.size()==1:
-			var result:bool = evaluate_comparison(caller, embedded_code, embedded_code_end)
+			var result:bool = evaluate_comparison(caller, embedded_code, text_0_reconstruction_1[1].length())
 			if result:
 				_process_if_success(text_0_reconstruction_1, embedded_code, embedded_code_end, caller)
 				
@@ -244,12 +275,12 @@ func _process_if_statement(text_0_reconstruction_1: Array, embedded_code: String
 			var left_evaluation: bool
 			var right_evaluation:bool
 			
-			left_evaluation	= evaluate_comparison(caller, comparisons[index-1], embedded_code_end)
+			left_evaluation	= evaluate_comparison(caller, comparisons[index-1], text_0_reconstruction_1[1].length())
 			
 			if left_evaluation:
 				#decide whether or not to evaluate the right comparison
 				if index == operator_array[-1]: #last operator
-					right_evaluation = evaluate_comparison(caller, comparisons[index+1], embedded_code_end)
+					right_evaluation = evaluate_comparison(caller, comparisons[index+1], text_0_reconstruction_1[1].length())
 					if right_evaluation:
 						or_comparisons.append(true)
 					else:
@@ -257,7 +288,7 @@ func _process_if_statement(text_0_reconstruction_1: Array, embedded_code: String
 					continue
 				
 				if  comparisons[index+2] != " and ": #and operators are grouped together
-					right_evaluation = evaluate_comparison(caller, comparisons[index+1], embedded_code_end)
+					right_evaluation = evaluate_comparison(caller, comparisons[index+1], text_0_reconstruction_1[1].length())
 					if right_evaluation:
 						or_comparisons.append(true)
 					else:
@@ -277,7 +308,7 @@ func _process_if_statement(text_0_reconstruction_1: Array, embedded_code: String
 					break
 			else:
 				var result: bool
-				result = evaluate_comparison(caller, comparison, embedded_code_end)
+				result = evaluate_comparison(caller, comparison, text_0_reconstruction_1[1].length())
 				if result:
 					final_result = true
 					break
@@ -383,39 +414,47 @@ func _process_if_failure(text_0_reconstruction_1: Array, embedded_code: String, 
 func evaluate_comparison(caller, comparison: String, comparison_index_end: int = 0)->bool:
 	#first check if the comparison as a whole matches either a function or a variable.
 	var results = function_variable_check(caller, comparison)
+	
 	if typeof(results) == TYPE_BOOL:
 		return results
 		
 	
 	#split the comparison into two segments at the comparison operator and process each 
-	var operator_index: int			= -1
+	var operator_index: int		= -1
 	var operator_length: int	= 0
 	
 	var pivot_value: int			= 0
 	while operator_index < 0:
 		pivot_value +=1
+		var operator: String
 		match pivot_value:
 			1:
-				operator_index = comparison.find(" <")
-				if operator_index > 0:
-					if comparison.substr(operator_index, 2) == "<=":
-						operator_length = 4
-					else:
-						operator_length = 3
+				operator = " <"
 			2:
-				operator_index = comparison.find(" >")
-				if operator_index > 0:
-					if comparison.substr(operator_index, 3) == " >=":
-						operator_length = 4
-					else:
-						operator_length = 3
+				operator = " >"
 			3:
-				operator_index = comparison.find(" is ")
-				if operator_index > 0:
-					operator_length = 4
-			_:#this means the measures at the beginning failed to return, and no object, method, or variable could be found. or the operator wasn't spaced correctly
-				insert_error(comparison_index_end, "Error: could not find reference match for comparison in embeded code: " + comparison + " Check comparison operator spacing")
+				operator = " is "
+			4:
+				operator = " ="
+			5:
+				operator = " !"
+			_:#this means there is no operator and the measures at the beginning failed to return because no object, method, or variable could be found. or the operator wasn't spaced correctly
+				insert_error(comparison_index_end, "Error: could not find reference match for comparison in embeded code: \"" + comparison + "\" Check comparison operator spacing")
 				return true
+		
+		operator_index = comparison.find(operator)
+		if operator_index >= 0:
+			operator_length = operator.length() + 1
+			var comparison_substr: String = comparison.substr(operator_index, 3)
+			if comparison_substr == " is":
+				if comparison.substr(operator_index, 8) == " is not ":
+					operator_length += 3
+				else:
+					operator_length -= 1
+			elif comparison_substr == " <=" or comparison_substr == " <=" or comparison_substr == " !=":
+				operator_length += 1
+			
+			
 	
 	#split the comparison into two segments at the operator index
 	var segment_one: String =  comparison.substr(0, operator_index)
@@ -426,7 +465,7 @@ func evaluate_comparison(caller, comparison: String, comparison_index_end: int =
 	if segment_one_results == null:
 		insert_error(comparison_index_end, "Error: could not find what embedded code was referencing, or the value of the reference was null for: " + segment_one + " Reminder, null values are not supported.")
 		return true
-	var segment_two_results = function_variable_check(caller, segment_one)
+	var segment_two_results = function_variable_check(caller, segment_two)
 	if segment_two_results == null:
 		insert_error(comparison_index_end, "Error: could not find what embedded code was referencing, or the value of the reference was null for: " + segment_two + " Reminder, null values are not supported.")
 		return true
@@ -478,6 +517,8 @@ func evaluate_comparison(caller, comparison: String, comparison_index_end: int =
 						
 		" is ":
 			return equivilency_logic(segment_one_results, segment_two_results)
+		" is not ":
+			return !equivilency_logic(segment_one_results, segment_two_results)
 		" = ":
 			return equivilency_logic(segment_one_results, segment_two_results)
 		
@@ -496,30 +537,49 @@ func equivilency_logic(segment_one_results, segment_two_results)->bool:
 
 ##will check if the text comparison references a function or variable and returns the result. The function returns null if it is neither a function nor a variable. 
 func function_variable_check(caller, comparison: String):
+	if comparison.to_lower() == "false":
+		return false
+	elif comparison.to_lower() == "true":
+		return true
+	
 	if !comparison.contains("<") and !comparison.contains(">"):
-		var embedded_function: String = to_function(comparison)
-		var variable = caller.get(comparison.to_snake_case())
+		#comparison is a possible, but not verified standalone function or variable
+		var embedded_function: String = snake_case(comparison)
+		
 		if is_valid_function_name(embedded_function) and caller.has_method(embedded_function):
 			var _return_value = caller.call(embedded_function)
 			if _return_value != null:
 				return _return_value
-		#just because we find a matching function doesn't mean it's an intended reference. If return value is not a bool, we assume it may be a name collision with a variable of object reference		
 		
-		var of_index: = comparison.find(" of ") 
-		if variable != null:
-			return variable
+		var result = variable_check(caller, comparison)
+		return result
+		#just because we find a matching function doesn't mean it's an intended reference. If return value is not a bool, we assume it may be a name collision with a "variable of object" format
 		
-		elif of_index != -1:
-			#split the comparison into segments at the of_index
-			var variable_name = comparison.substr(0, of_index).to_snake_case()
-			var object_name = comparison.substr(of_index + 4).to_snake_case() #warning: this will be sensative to accidental double spaces. 
-			var object = find_object_by_name(object_name)
-			if object != null and object.get(variable_name) != null:
-				variable = object.get(variable_name)
-				return variable
+		
 	return null
 
-
+func variable_check(caller, comparison: String):
+	if comparison.is_valid_int():
+		return comparison.to_int()
+	var comparison_snake = snake_case(comparison)
+	var variable = caller.get(comparison_snake)
+	var of_index: = comparison.find(" of ") 
+	if variable != null:
+		return variable
+	
+	elif of_index != -1:
+		#split the comparison into segments at the of_index
+		var variable_name = snake_case(comparison.substr(0, of_index))
+		var object_name = comparison.substr(of_index + 4) #warning: this will be sensative to accidental double spaces. 
+		var object = find_object_by_name(object_name)
+		if object == null:
+			return null
+		else:
+			return object.get(variable_name)
+	else:
+		#triggers for case where "<object> is/is not <variable/state>"
+		return find_object_by_name(comparison)
+	return null
 
 
 var waiting_on_error_insertion: bool = false
@@ -599,8 +659,13 @@ func construct_text_segment(text_0_reconstruction_1: Array, index:int, recon_met
 				text_0_reconstruction_1[1][0] += substring.length()
 			text_0_reconstruction_1[0] = trim_left(text_0_reconstruction_1[0], index+1) #removes the character at the index
 	
-	
 
+
+
+func snake_case(text: String)->String:
+		text = text.strip_edges()
+		text = text.replace(" ", "_")
+		return text
 
 func is_bbcode(embedded_code:String)->bool:
 	return false
@@ -617,5 +682,5 @@ func trim_right(text:String, index:int)->String:
 
 func to_function(string: String)->String:
 	string = string.to_lower()
-	string = string.to_snake_case()
+	string = snake_case(string)
 	return string
